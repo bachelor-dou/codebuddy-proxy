@@ -1,11 +1,11 @@
-# WorkBuddy2API-Hub Docker Compose
-# 部署：docker compose up -d
-# 更新：docker compose pull && docker compose up -d
+# CodeBuddy Proxy Docker Compose
+# 部署：docker compose up -d --build
+# 更新：git pull --ff-only && docker compose up -d --build
 services:
-  wb-proxy:
-    # 追最新稳定版用 :latest；想固定版本可换成具体版本号（如 :v1.6.11）
-    image: ghcr.io/ardeyouxipianyi/workbuddy2api-hub:latest
-    container_name: wb-proxy
+  codebuddy-proxy:
+    build: .
+    image: codebuddy-proxy:local
+    container_name: codebuddy-proxy
     restart: unless-stopped
     # Defaults to root (0:0), i.e. the historical behaviour. To run as your own
     # host user instead, set PUID/PGID (e.g. PUID=$(id -u) PGID=$(id -g)
@@ -21,17 +21,8 @@ services:
       # 留空则启动时自动生成高强度 API Key 写入 ./accounts/settings.json 并打印在启动日志中
       # - API_KEY=your_secret_key
       - TZ=Asia/Shanghai
+      - WB_UPDATE_REPO=bachelor-dou/codebuddy-proxy
     volumes:
       # 持久化数据目录：升级与重建容器时绝不丢失配置与用量
       - ./accounts:/app/accounts
       - ./usage:/app/usage
-
-  # 可选：Watchtower 自动静默更新服务（取消注释即可开启）
-  # 每天自动检查镜像更新，拉取新版本并优雅重启 wb-proxy
-  # watchtower:
-  #   image: containrrr/watchtower:latest
-  #   container_name: wb-proxy-watchtower
-  #   restart: unless-stopped
-  #   volumes:
-  #     - /var/run/docker.sock:/var/run/docker.sock
-  #   command: --interval 86400 --cleanup wb-proxy

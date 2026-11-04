@@ -1,4 +1,17 @@
-# WorkBuddy2API-Hub — 国际版、国内版多账号网关中枢
+# CodeBuddy Proxy
+
+本仓库基于 [WorkBuddy2API-Hub](https://github.com/ardeyouxipianyi/workbuddy2api-hub)，增加企业自定义模型发现和独立分组展示。上游基线：`3bee253`（v1.10.9 之后的主分支）。
+This fork adds enterprise model discovery and separate enterprise/built-in model tables, based on upstream commit `3bee253`.
+
+使用本仓库源码构建：`docker compose up -d --build`。服务和容器名为 `codebuddy-proxy`，保留 Python 入口 `wb_proxy` 以兼容上游。账号和用量仍分别挂载到 `/app/accounts`、`/app/usage`。
+Build from this repository with `docker compose up -d --build`. The service/container is named `codebuddy-proxy`; the upstream Python module remains `wb_proxy`. Keep existing account and usage volumes when migrating.
+
+企业模型来自已登录账号的企业配置接口；面板保留上游搜索、排序及一键配置勾选功能。`/v1/models` 保留标准 `data` 数组，新增 `catalog_type` 字段区分 `enterprise` 与 `builtin`。目录可见性不等同于逐模型推理验证。
+Enterprise models come from the signed-in accounts' enterprise configuration endpoint. Search, sorting and model selection remain available. `/v1/models` keeps its standard `data` array and adds `catalog_type` (`enterprise` or `builtin`). Listing does not certify inference availability.
+
+---
+
+# CodeBuddy Proxy — 国际版、国内版多账号网关中枢
 
 > [!IMPORTANT]
 > **项目进入低频维护（2026-10-23） / Low-frequency maintenance**
@@ -214,7 +227,7 @@ python tests/run_all.py            # 全部套件
 python tests/run_all.py realm      # 只跑名字里含 realm 的
 ```
 
-- 270 个套件：203 个 Python + 67 个 JS；JS 需要 PATH 上有 `node`，缺失时会跳过并提示。
+- 272 个套件：204 个 Python + 68 个 JS；JS 需要 PATH 上有 `node`，缺失时会跳过并提示。
 - `tests/_mobile_check.py` 是独立的 Playwright 手机/桌面布局检查器（需自行安装 Playwright），按需手动运行，不在上面的套件集里。
 - CI（`.github/workflows/tests.yml`）跑同一条命令：Ubuntu 上 python 3.9 与 3.12（3.9 是本项目声称的最低版本），Windows 上 python 3.12；推送 `v*` tag 时额外断言 **tag == 源码版本**（`-ci` 演练 tag 豁免）。
 
@@ -223,6 +236,9 @@ python tests/run_all.py realm      # 只跑名字里含 realm 的
 ## 七、版本更新记录 (Changelog)
 
 ### Unreleased
+
+- 企业目录：按账号读取企业自定义对话模型，独立缓存并标注获取状态；面板将企业模型和内置模型分组展示，保留搜索和勾选。Enterprise discovery uses account-scoped caches and separate model groups while preserving search and selection.
+- 本分支使用 `codebuddy-proxy` 作为源码构建镜像及容器名称。This fork uses `codebuddy-proxy` for the source-built image and container.
 
 - **账号多时面板更顺**：账号表改为客户端分页（每页 50 个，排序与筛选作用在全部账号上再切页；改区域 / 改筛选 / 点表头回第 1 页，账号变少时页码夹回最后一页）；15 秒账号轮询拿回的数据与视图都没变时不再整表重画，且只在显示账号数据的页签（网关、账号、任务，新导航的总览）上跑，切回这些页签时立即拉一次；自动补积分改为只点名缺积分的号（`POST /accounts/credits` 新增 `uids` 列表参数，非列表回 400），每个号每次页面加载最多补一次，不再触发全池逐个刷。手动「一键刷新积分」不变。
 - 移除已废弃的 `WB_DEEPSEEK_FLASH_FORCE_SG` 文档行与两个恒返回 `False` 的存根函数（#776）。

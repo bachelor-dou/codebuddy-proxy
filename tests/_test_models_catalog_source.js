@@ -23,7 +23,7 @@ const script = dashboardScript();
 const dom = require('./_dom_stub.js');
 const tbody = dom.makeElement('tbody');
 dom.installDom({
-  querySelector: {'#modelsTable tbody': tbody},
+  querySelector: {'#modelsTable tbody': tbody, '#enterpriseModelsTable tbody': dom.makeElement('tbody')},
   fetch: () => Promise.resolve({
     ok: true, status: 200,
     json: () => Promise.resolve({data: [], catalog: null}),

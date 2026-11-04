@@ -1321,6 +1321,37 @@ button.page-nav-top:hover{background:var(--panel2);border-color:var(--accent);co
   .cs-panel,.cs-arrow,.cs-trigger{transition:none}
 }
 
+
+/* 企业模型与内置模型使用相同表格布局。 */
+
+/* 网关模型清单：固定列布局 + 百分比列宽 → 占满整行、消除右侧空位；
+   单元格 nowrap 防止长模型 ID / 思考档位换行，超长用省略号兜底。 */
+#enterpriseModelsTable{table-layout:fixed}
+
+#enterpriseModelsTable{min-width:980px}
+
+#enterpriseModelsTable th,#enterpriseModelsTable td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* 消费倍率列可能同时放「倍率」和「Pro Only」两枚胶囊；固定列宽下
+   nowrap 会把第二枚裁掉，允许换行只让这一类行变高（#527）。 */
+#enterpriseModelsTable td.rate-cell{white-space:normal;line-height:1.8}
+
+#enterpriseModelsTable td[data-label="思考档位"],
+#enterpriseModelsTable td[data-label="名称"],
+#enterpriseModelsTable td[data-label="模型类型"]{white-space:normal;line-height:1.4;word-break:break-word}
+
+/* 采样参数：放不下时 chips 折行显示完整，不截断 */
+#enterpriseModelsTable td[data-label="默认采样参数"]{white-space:normal}
+
+/* 模型 ID 前的「一键配置」勾选框。勾选只决定一键配置写进客户端的模型清单，
+   不改网关路由；label 把勾选框和 ID 包在一起，点 ID 也能勾。排序只认表头
+   （见 sortHeaderAt），点勾选框不会触发排序。单元格用类名定位，别用
+   data-label——i18n 会把 data-label 翻成英文 / 繁中。 */
+#enterpriseModelsTable .model-pick{width:14px;height:14px;margin:0;flex-shrink:0;cursor:pointer}
+
+#enterpriseModelsTable td.model-id-cell label{display:inline-flex;align-items:center;gap:7px;max-width:100%;cursor:pointer}
+
+#enterpriseModelsTable td.model-id-cell b{overflow:hidden;text-overflow:ellipsis}
 </style>
 <style id="wb-alibaba-console" media="not all">
 /* ============================================================
@@ -2622,6 +2653,16 @@ if(!window.__NEXT_UI__ && defaultConsoleLayout) {
     '已取消窗口限高（不限）': 'Height cap removed (no limit)',
     '请填写 0 或正数（像素）': 'Enter 0 or a positive number (pixels)',
     '网关模型清单': 'Gateway model catalog',
+    "企业模型": "Enterprise models",
+    "内置模型": "Built-in models",
+    "暂无符合条件的模型": "No matching models",
+    "已从企业模型配置接口获取当前配置的对话模型。": "Chat models fetched from the enterprise configuration.",
+    "部分账号获取失败；相应账号沿用上次成功结果（若有），列表可能不完整。": "Some accounts failed to refresh; their last successful results are used when available.",
+    "企业模型接口获取失败，当前显示上次成功的缓存。": "Enterprise model refresh failed; showing the last successful cache.",
+    "企业模型接口获取失败，当前没有可显示的缓存。": "Enterprise model refresh failed; no cached models are available.",
+    "当前视图没有启用且已登录的企业账号。": "No enabled, signed-in enterprise accounts in this view.",
+    "企业模型来源未知。": "Enterprise model source unknown.",
+
     // 「网关模型清单」勾选：静态说明、勾选框 tooltip、表头三个批量动作、已选计数与两个即时提示。
     '只有勾选的模型才会写入 DSH 等客户端（一键配置）；默认全部勾选，可用表头「全选 / 全不选 / 反选」批量调整，改完请重新一键配置并重启客户端。': 'Only the models you tick are written into the one-click configuration for DSH and other clients; everything is ticked by default, the header buttons Select all / Clear all / Invert change them in bulk, so re-run the one-click configuration and restart the client after changing it.',
     '全选': 'Select all',
@@ -3902,6 +3943,16 @@ if(!window.__NEXT_UI__ && defaultConsoleLayout) {
     " · 已选 ": " · 已選 ",
     "模型勾选保存失败：": "模型勾選儲存失敗：",
     "请先在「网关模型清单」勾选至少一个模型": "請先在「閘道模型清單」勾選至少一個模型",
+    "企业模型": "企業模型",
+    "内置模型": "內建模型",
+    "暂无符合条件的模型": "暫無符合條件的模型",
+    "已从企业模型配置接口获取当前配置的对话模型。": "已從企業模型設定介面取得目前設定的對話模型。",
+    "部分账号获取失败；相应账号沿用上次成功结果（若有），列表可能不完整。": "部分帳號取得失敗；相應帳號沿用上次成功結果（若有），清單可能不完整。",
+    "企业模型接口获取失败，当前显示上次成功的缓存。": "企業模型介面取得失敗，目前顯示上次成功的快取。",
+    "企业模型接口获取失败，当前没有可显示的缓存。": "企業模型介面取得失敗，目前沒有可顯示的快取。",
+    "当前视图没有启用且已登录的企业账号。": "目前檢視沒有啟用且已登入的企業帳號。",
+    "企业模型来源未知。": "企業模型來源未知。",
+
     "网络异常:": "網路異常:",
     "网络异常: ": "網路異常: ",
     "自动发现 mihomo 端口": "自動發現 mihomo 埠",
@@ -5503,6 +5554,26 @@ html[data-ui="next"] #nextContent .console-shell > main {padding:24px;max-width:
     </div>
     <div id="modelPickHint" style="font-size:12px;color:var(--dim);margin:0 0 10px;line-height:1.6"
          title="勾选结果存在网关设置里，对所有版本视图生效；未勾选只影响一键配置写入客户端的模型清单，网关本身照常提供这些模型。">只有勾选的模型才会写入 DSH 等客户端（一键配置）；默认全部勾选，可用表头「全选 / 全不选 / 反选」批量调整，改完请重新一键配置并重启客户端。</div>
+    <h3>企业模型 <em id="enterpriseModelCount"></em></h3>
+    <div id="enterpriseModelsSourceLine" style="font-size:12px;color:var(--dim);margin:0 0 12px" role="status"></div>
+    <div class="next-table-scroll">
+      <table id="enterpriseModelsTable" class="data-cards">
+        <thead>
+          <tr>
+            <th style="text-align:left;width:19%">模型 ID</th>
+            <th style="text-align:left;width:11%">名称</th>
+            <th style="text-align:center;width:12%">消费倍率 / 优惠</th>
+            <th style="text-align:center;width:14%">模型能力</th>
+            <th style="text-align:center;width:9%">上下文窗口</th>
+            <th style="text-align:center;width:9%">最大输出</th>
+            <th style="text-align:left;width:15%">思考档位</th>
+            <th style="text-align:left;width:11%;white-space:nowrap">默认采样参数</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <h3>内置模型 <em id="builtinModelCount"></em></h3>
     <!-- 清单来源横幅：API 获取 → 绿色状态条（附刷新时间）；非 API（项目默认
          信息/缓存文件）→ 黄色警示「模型、倍率数据可能不一致」。内容由
          /v1/models 的 catalog 字段驱动，见 renderModelsSourceLine。 -->
@@ -8541,6 +8612,7 @@ async function refreshModelCatalog(btn){
       toast(label + '模型清单：' + (r.msg || '刷新太频繁'), 'warn');
     } else {
       toast(label + '模型清单刷新失败：' + ((r && r.msg) || '未知原因'), 'warn');
+      await loadModels();
     }
   }catch(e){
     toast(label + '模型清单刷新失败：' + e.message, 'bad');
@@ -8554,6 +8626,7 @@ async function loadModels(){
     const r = await getJSON('/v1/models?realm=' + encodeURIComponent(window.VIEW_REALM));
     MODELS_DATA = r.data || [];
     renderModelsSourceLine(r.catalog || null);
+    renderEnterpriseModelsSourceLine((r.catalog || {}).enterprise);
     renderAvailableModels();
   }catch(e){
     console.error('loadModels error:', e);
@@ -8615,7 +8688,7 @@ function updateAvailModelCount(){
 // 只改复选框的勾选状态与计数，不重建行——避免把滚动位置、排序和焦点抖掉。
 // 选择在别处变化（GET 回来、POST 失败回滚、批量动作）时用这个同步。
 function syncModelPickBoxes(){
-  Array.from(document.querySelectorAll('#modelsTable input.model-pick')).forEach(box => {
+  Array.from(document.querySelectorAll('#modelsTable input.model-pick, #enterpriseModelsTable input.model-pick')).forEach(box => {
     box.checked = isModelPicked(box.dataset.modelId);
   });
   updateAvailModelCount();
@@ -8808,10 +8881,27 @@ function renderModelsSourceLine(meta){
     + ' · 建议点击「刷新模型清单」获取最新数据</span>';
 }
 
+function renderEnterpriseModelsSourceLine(meta){
+  const el = document.getElementById('enterpriseModelsSourceLine');
+  if(!el) return;
+  const messages = {
+    remote: '已从企业模型配置接口获取当前配置的对话模型。',
+    partial: '部分账号获取失败；相应账号沿用上次成功结果（若有），列表可能不完整。',
+    cache: '企业模型接口获取失败，当前显示上次成功的缓存。',
+    unavailable: '企业模型接口获取失败，当前没有可显示的缓存。',
+    none: '当前视图没有启用且已登录的企业账号。'
+  };
+  el.textContent = messages[meta && meta.source] || '企业模型来源未知。';
+}
+
 function renderAvailableModels(){
   const tb = document.querySelector('#modelsTable tbody');
-  if(!tb) return;
+  const enterpriseTb = document.querySelector('#enterpriseModelsTable tbody');
+  if(!tb || !enterpriseTb) return;
   updateAvailModelCount();
+  const enterpriseCount = MODELS_DATA.filter(m => m.catalog_type === 'enterprise').length;
+  document.getElementById('enterpriseModelCount').textContent = '(共 ' + enterpriseCount + ' 个)';
+  document.getElementById('builtinModelCount').textContent = '(共 ' + (MODELS_DATA.length - enterpriseCount) + ' 个)';
   const query = MODEL_CATALOG_FILTER.trim().toLowerCase();
   const visibleModels = MODELS_DATA.filter(m => !query || [
     m.id, m.name, m.description, m.credits,
@@ -8822,14 +8912,14 @@ function renderAvailableModels(){
   const count = document.getElementById('modelCatalogFilterCount');
   if(count) count.textContent = query ? ('显示 ' + visibleModels.length + ' / ' + MODELS_DATA.length + ' 个模型') : '';
   if(!MODELS_DATA.length){
-    tb.innerHTML = '<tr><td colspan="8" class="empty">暂无可用模型</td></tr>';
+    tb.innerHTML = enterpriseTb.innerHTML = '<tr><td colspan="8" class="empty">暂无可用模型</td></tr>';
     return;
   }
   if(!visibleModels.length){
-    tb.innerHTML = '<tr><td colspan="8"><div class="console-filter-empty"><span>没有符合当前条件的模型</span><button type="button" class="sec mini" onclick="clearModelCatalogFilter()">清除筛选</button></div></td></tr>';
+    tb.innerHTML = enterpriseTb.innerHTML = '<tr><td colspan="8"><div class="console-filter-empty"><span>没有符合当前条件的模型</span><button type="button" class="sec mini" onclick="clearModelCatalogFilter()">清除筛选</button></div></td></tr>';
     return;
   }
-  tb.innerHTML = visibleModels.map(m => {
+  const renderRows = models => models.map(m => {
     // 1. 倍率与折扣 —— 一律以 /v1/models 取回的 credits 为准（活目录优先、
     //    内置快照兜底）。以前这里还按模型 id 写死了 hy3 / hy4-preview-f /
     //    国际版 deepseek-v4.1-flash 三个"限时免费"，与 credits 值是 OR 关系，
@@ -8986,7 +9076,11 @@ function renderAvailableModels(){
       + sampleCell
       + '</tr>';
   }).join('');
+  const empty = '<tr><td colspan="8" class="empty">暂无符合条件的模型</td></tr>';
+  tb.innerHTML = renderRows(visibleModels.filter(m => m.catalog_type !== 'enterprise')) || empty;
+  enterpriseTb.innerHTML = renderRows(visibleModels.filter(m => m.catalog_type === 'enterprise')) || empty;
   applyTableSort('modelsTable');
+  applyTableSort('enterpriseModelsTable');
 }
 
 let CURRENT_GROWTH_UID = 'all';
@@ -9526,6 +9620,7 @@ const SORT_DENY_TABLES = new Set(['recent', 'desktopScanBody', 'creditsModalCont
    （下拉框、按钮、拼给人看的标签串）。 */
 const SORT_COL_KINDS = {
   modelsTable:      ['text', 'text', 'num', 'text', 'num', 'num', 'text', 'text'],
+  enterpriseModelsTable: ['text', 'text', 'num', 'text', 'num', 'num', 'text', 'text'],
   growthTable:      ['text', 'text', 'num', 'num', 'text'],
   // 时间列是 ISO 串，字典序就是时间序，不必另给排序值。
   creditHistoryTable: ['text', 'text', 'text', 'num', 'num'],

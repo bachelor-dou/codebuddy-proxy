@@ -19,7 +19,7 @@ const dom = require('./_dom_stub.js');
 // renderAvailableModels() writes into #modelsTable tbody; capture it.
 const tbody = dom.makeElement('tbody');
 dom.installDom({
-  querySelector: {'#modelsTable tbody': tbody},
+  querySelector: {'#modelsTable tbody': tbody, '#enterpriseModelsTable tbody': dom.makeElement('tbody')},
   fetch: () => {
     const payload = {current: 'intl', accounts: [], slots: [], data: [],
                      results: [], byAccount: []};

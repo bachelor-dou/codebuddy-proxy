@@ -282,6 +282,7 @@ class CatalogDailyTests(unittest.TestCase):
     """
 
     class _FakePool(object):
+        accounts = []
         def representative(self, realm=None):
             return object()
 

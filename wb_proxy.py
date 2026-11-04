@@ -252,7 +252,7 @@ def exclusive_realm(model_id):
         return "cn"
     return ""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, quote
 def install_console_close_handler():
     """Release the port when the console window is closed by the user.
     Windows does not kill child processes when a console window closes, so
@@ -11821,6 +11821,77 @@ def merge_catalog(primary, realm=None, extras=False):
                 out.append((mid, item))
     return out
 _catalog_lock = threading.Lock()
+_enterprise_models_cache = {}
+
+
+def parse_enterprise_models(payload):
+    """Read the enterprise config endpoint, never local keys or usage history."""
+    if not isinstance(payload, dict) or payload.get("code") not in (None, 0, 200):
+        raise ValueError("enterprise catalogue returned an error")
+    models = payload.get("data")
+    if not isinstance(models, list):
+        raise ValueError("enterprise catalogue has no model list")
+    entries = {}
+    for model in models:
+        if not isinstance(model, dict) or not isinstance(model.get("id"), str):
+            raise ValueError("invalid enterprise model entry")
+        mid = model["id"].strip()
+        tags = model.get("tags", [])
+        if not isinstance(tags, list):
+            raise ValueError("invalid enterprise model tags")
+        # The official picker contributes only chat-tagged models to chat agents.
+        if not mid.startswith("custom:") or "chat" not in tags:
+            continue
+        meta = {k: model[k] for k in (
+            "name", "tags", "vendor", "maxInputTokens", "maxOutputTokens",
+            "supportsImages", "supportsToolCall", "supportsReasoning", "reasoning",
+            "disabledMultimodal", "temperature", "top_p", "credits",
+        ) if k in model}
+        if model.get("disabledMultiModel"):
+            meta["disabledMultimodal"] = True
+        meta["catalog_type"] = "enterprise"
+        entries[mid] = meta
+    return list(entries.items())
+
+
+def fetch_enterprise_models(realm):
+    """Account-scoped discovery; caller holds _catalog_lock and caches for 300s."""
+    entries, states = {}, []
+    for account in list(POOL.accounts) if POOL else []:
+        if (realm != "all" and account.realm != realm) or not account.enabled:
+            continue
+        if not account.enterprise_id or not account.access_token:
+            continue
+        base = account.chat_base_url()
+        key = (account.realm, account.uid, account.enterprise_id, base)
+        url = base + "/console/enterprises/" + quote(account.enterprise_id, safe="") + "/config/models"
+        req = urllib.request.Request(url, headers=account.headers(), method="GET")
+        try:
+            with wb_accounts.urlopen(req, timeout=5, proxy=account.proxy) as resp:
+                models = parse_enterprise_models(json.loads(resp.read().decode("utf-8")))
+            # An authoritative empty list clears removed models too.
+            _enterprise_models_cache[key] = models
+            states.append("remote")
+        except Exception as exc:
+            # Never retain a catalogue after an explicit authentication denial.
+            if isinstance(exc, urllib.error.HTTPError) and exc.code in (401, 403):
+                _enterprise_models_cache.pop(key, None)
+            models = _enterprise_models_cache.get(key, [])
+            states.append("cache" if models else "unavailable")
+            log("enterprise catalog: %s fetch failed (%s)" % (account.realm, type(exc).__name__))
+        for mid, meta in models:
+            entries.setdefault(mid, meta)
+    source = ("none" if not states else "remote" if all(s == "remote" for s in states)
+              else "partial" if "remote" in states else "cache" if "cache" in states
+              else "unavailable")
+    return list(entries.items()), {"source": source, "count": len(entries)}
+
+
+def include_enterprise_models(builtin, enterprise):
+    # Enterprise models have no product credit multiplier. Keep their own source
+    # and append after built-in curation, without passing through its price filter.
+    ids = {mid for mid, _ in enterprise}
+    return [(mid, meta) for mid, meta in builtin if mid not in ids] + enterprise
 
 _catalog_fallback_log = {}
 def note_bundled_reasoning(realm, live, entries):
@@ -11912,9 +11983,11 @@ def fetch_models(realm=None):
             if live:
                 source = "endpoint"
         entries = merge_catalog(live, realm=r, extras=extras)
+        enterprise, enterprise_meta = fetch_enterprise_models(r)
+        entries = include_enterprise_models(entries, enterprise)
         note_bundled_reasoning(r, live, entries)
         if not live:
-            # 没有任何活数据：清单完全来自内置快照（硬编码兜底）。
+            # 内置目录没有活数据：该部分来自内置快照；企业来源单独记录。
             source = "bundled"
         elif source in ("remote", "endpoint"):
             # 记下「这个 realm 今天已经从 API 拿到过目录」，每日兜底循环据此
@@ -11929,7 +12002,7 @@ def fetch_models(realm=None):
         with _lock:
             _models_cache[r] = {"at": time.time(), "data": entries}
             _catalog_meta[r] = {"source": source, "fetched_at": time.time(),
-                                "file_mtime": file_mtime}
+                                "file_mtime": file_mtime, "enterprise": enterprise_meta}
         return entries
 def model_entry(mid, meta, realm=None):
     """Build a rich /v1/models entry from the desktop app catalog metadata.
@@ -11948,6 +12021,7 @@ def model_entry(mid, meta, realm=None):
         "object": "model",
         "created": int(time.time()),
         "owned_by": "workbuddy",
+        "catalog_type": meta.get("catalog_type", "builtin"),
     }
     name = meta.get("name")
     if name:
@@ -12342,7 +12416,8 @@ def refresh_catalog(realm):
     fetch_remote_product_config 只挑该 realm 的代表账号、只打该 realm 的
     端点（realm 隔离由它内部的 POOL.representative(realm=realm) 保证，
     绝无跨区取数）；_catalog_lock 与自动链互斥，不会并发打到上游；失败
-    时不清旧缓存——清单保持可用，等用户或自动链下次再拉。与自动链的一个
+    时保留可用缓存；企业目录另按账号获取，明确的空列表或鉴权拒绝清除旧项。
+    两类来源独立记录，一类失败不阻止另一类更新。与自动链的一个
     差别：这里不读桌面缓存文件，拉不到就说拉不到（手动按钮要的是「这次
     真的从上游 API 取到了」的如实反馈）。
 
@@ -12368,24 +12443,39 @@ def refresh_catalog(realm):
         except Exception as exc:
             log("catalog refresh: %s failed (%s)" % (realm, exc))
             remote = None
-        if not remote:
+        enterprise, enterprise_meta = fetch_enterprise_models(realm)
+        refreshed = bool(remote) or enterprise_meta["source"] in ("remote", "partial")
+        if not refreshed:
             log("catalog refresh: %s kept the previous list (upstream gave none)" % realm)
-            return {"ok": False, "realm": realm, "source": None, "count": 0,
-                    "msg": "上游未返回可用目录（账号不可用或网络异常），已保留现有清单"}
-        ids, meta = remote
-        live = [(mid, meta.get(mid) or {})
-                for mid in curate_remote_catalog(realm, ids, meta)]
-        entries = merge_catalog(live, realm=realm, extras=True)
+        if remote:
+            ids, meta = remote
+            live = [(mid, meta.get(mid) or {})
+                    for mid in curate_remote_catalog(realm, ids, meta)]
+            entries = merge_catalog(live, realm=realm, extras=True)
+            catalog = {"source": "remote", "fetched_at": time.time(), "file_mtime": None}
+        else:
+            live = []
+            previous = (_models_cache.get(realm) or {}).get("data") or []
+            entries = [(mid, meta) for mid, meta in previous
+                       if meta.get("catalog_type") != "enterprise"]
+            entries = entries or merge_catalog([], realm=realm)
+            catalog = dict(_catalog_meta.get(realm) or
+                           {"source": "bundled", "fetched_at": time.time(), "file_mtime": None})
+        entries = include_enterprise_models(entries, enterprise)
         note_bundled_reasoning(realm, live, entries)
         with _lock:
             _models_cache[realm] = {"at": time.time(), "data": entries}
-            _catalog_meta[realm] = {"source": "remote", "fetched_at": time.time(),
-                                    "file_mtime": None}
-    log("catalog refresh: %s updated from the product-config endpoint (%d models)"
+            catalog["enterprise"] = enterprise_meta
+            _catalog_meta[realm] = catalog
+    log("catalog refresh: %s updated (%d models)"
         % (realm, len(entries)))
-    note_remote_catalog(realm)
-    return {"ok": True, "realm": realm, "source": "remote", "count": len(entries),
-            "msg": "已从上游 API 更新清单，共 %d 个模型" % len(entries)}
+    if remote:
+        note_remote_catalog(realm)
+    return {"ok": refreshed, "realm": realm, "source": "remote" if refreshed else None,
+            "count": len(entries),
+            "msg": ("目录已刷新，共 %d 个；企业模型 %d 个（%s），内置模型来源 %s" %
+                    (len(entries), len(enterprise), enterprise_meta["source"], catalog["source"])) if refreshed
+                   else "上游目录获取失败，保留可用缓存；企业模型状态已更新"}
 
 
 #: 目录的「每天至少从上游 API 取一次」兜底。活跃使用的部署里 fetch_models
